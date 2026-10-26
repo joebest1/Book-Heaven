@@ -1,186 +1,120 @@
+Book Heaven — Book Store
 
-# 📚 Book Heaven (Book-Store)
+Book Heaven is an ASP.NET Core 8 bookstore web application. Visitors can browse, search, and sort a book catalog. Registered users can manage a shopping cart, while administrators can add books and upload cover images.
 
-ASP.NET Core MVC bookstore application with a full Web API backend, Identity-based authentication, role-based authorization (Admin / User), shopping cart, book search & sorting, Cloudflare Turnstile bot protection, and email-based password reset.
+## Features
 
+- Book catalog with search by title or author and sorting by price or publication date
+- User registration, login, logout, and role-based access through ASP.NET Core Identity
+- Shopping cart associated with the signed-in user
+- Admin book creation with image uploads served from `wwwroot/images/books`
+- Password recovery through SMTP email
+- Cloudflare Turnstile verification on registration
+- REST API endpoints with Swagger/OpenAPI documentation
+- SQL Server persistence using Entity Framework Core migrations
 
+## Tech stack
 
----
+- C# and ASP.NET Core 8 MVC
+- Razor Views, HTML, CSS, JavaScript, and Bootstrap
+- Entity Framework Core 8 and SQL Server
+- ASP.NET Core Identity, cookie authentication, and session state
+- Swagger / Swashbuckle
 
-## 🧱 Tech Stack
+## Requirements
 
-| Layer | Technology |
-|---|---|
-| Framework | ASP.NET Core MVC (.NET 8) |
-| ORM | Entity Framework Core 8 (Code-First + Migrations) |
-| Database | SQL Server |
-| Auth | ASP.NET Core Identity (Cookie-based) + Session |
-| Bot protection | Cloudflare Turnstile |
-| Email | SMTP (Gmail) for password reset links |
-| Logging | Serilog |
-| API Docs | Swashbuckle (Swagger / OpenAPI) |
-| Frontend | Razor Views (.cshtml) + Bootstrap/CSS + JS |
-
----
-
-## 🏗️ Architecture
-
-The project follows a **hybrid MVC + internal Web API** pattern: the MVC `Controllers` (Books, Account, Cart, Home) render the UI, but instead of talking to `AppDbContext` directly for books/cart/auth, they call **internal API controllers** (`ApiBookController`, `ApiCartController`, `UserApiController`) over HTTP using a shared `HttpClient`. This separates presentation from data access and makes the same API reusable by other clients (mobile, SPA, etc.).
-
-```
-Browser
-   │
-   ▼
-MVC Controllers (Books / Account / Cart / Home)
-   │  (HttpClient calls, cookie-based session preserved)
-   ▼
-Internal Web API (ApiBookController / ApiCartController / UserApiController / ApiFilterController)
-   │
-   ▼
-AppDbContext (EF Core) ──► SQL Server
-```
-
-### Project structure
-
-```
-BookStore/
-├── ActionFilter/            # Custom MVC action filters
-├── Controllers/
-│   ├── AcountController.cs  # MVC: Login, Register, Logout, Forgot/Reset Password
-│   ├── BooksController.cs   # MVC: Book listing (search/sort), Create (Admin only)
-│   ├── CartController.cs    # MVC: Cart page, Add/Delete (proxies to API)
-│   ├── CartCountViewComponent.cs
-│   ├── HomeController.cs
-│   ├── Cart/ApiCartController.cs     # API: add / mycart / delete/{bookId}
-│   ├── User/UserApiController.cs     # API: register / login / logout / forgot-password / reset-password
-│   ├── User/EmailMsg.cs              # EmailSettings + IEmailService (SMTP)
-│   └── book/
-│       ├── ApiBookController.cs      # API: POST/GET/DELETE Books (Admin-protected writes)
-│       └── ApiFilterController.cs    # API: search & sort books
-├── Data/
-│   ├── Db.cs                # AppDbContext (IdentityDbContext)
-│   ├── Books.cs               # Books entity
-│   ├── Cart.cs                # Cart entity
-│   └── ViewModels/
-├── Models/                    # ViewModels (Login, Register, Reset/Forgot Password, MyBookModel, ...)
-├── Services/
-│   ├── AuthService.cs         # Wraps calls to UserApiController
-│   ├── BookService.cs         # Wraps calls to ApiBookController + client-side search/sort
-│   └── CartService.cs         # Wraps calls to ApiCartController
-├── Views/                     # Razor views: Account, Books, Cart, Home, Shared
-├── Migrations/                # EF Core migrations
-├── Seeds/SeedAdmin.cs
-├── Program.cs                  # App startup, DI, middleware pipeline
-├── appsettings.json
-└── BookStore.csproj
-```
-
----
-
-## ✨ Features
-
-- **Authentication & Authorization**: Register/Login/Logout via ASP.NET Core Identity, with `Admin` and `User` roles seeded automatically on startup (`admin@example.com` / `Admin@123`, `user@example.com` / `User@123` — demo accounts created in `Program.cs`).
-- **Bot protection**: Registration form is protected with **Cloudflare Turnstile**; the server verifies the token server-side before creating the account.
-- **Password recovery**: Forgot/Reset password flow that emails a reset link via SMTP (Gmail).
-- **Book catalog**: Browse, search (by title/author), and sort (by price/date, asc/desc).
-- **Admin-only book creation**: Only users with the `Admin` role can add new books, including image upload (saved to `wwwroot/images/books`).
-- **Shopping cart**: Per-user cart (tied to the logged-in `UserId`), add/remove items, automatic quantity merge if the same book is added twice, live cart item count shown in the navbar via a `ViewComponent`.
-- **Swagger UI**: Auto-generated API documentation available at `/swagger`.
-- **Centralized error handling**: Global exception handler middleware returns a clean JSON 500 response and logs the error via Serilog.
-- **Session-based UI state**: `UserRole` and `UserEmail` are stored in session to drive navbar rendering (guest vs. authenticated, Admin-only links).
-
----
-
-## 🔌 API Reference
-
-All internal APIs require the user to be authenticated (cookie-based), except where noted.
-
-### Auth — `UserApiController` (`/api/UserApi`)
-
-| Method | Route | Description |
-|---|---|---|
-| POST | `/api/UserApi/register` | Create a new user (FirstName, LastName, Email, Password, optional Role) |
-| POST | `/api/UserApi/login` | Sign in, returns the user's role |
-| POST | `/api/UserApi/logout` | Sign out the current user |
-| POST | `/api/UserApi/forgot-password` | Sends a password-reset email |
-| POST | `/api/UserApi/reset-password` | Resets the password using the emailed token |
-
-### Books — `ApiBookController` (`/Books`)
-
-| Method | Route | Auth | Description |
-|---|---|---|---|
-| GET | `/Books` (`ApiBook/Books`) | Public | List all books |
-| POST | `/Books` (`ApiBook/Books`) | **Admin only** | Add a new book (multipart form, supports image upload) |
-| DELETE | `/Books/{id}` | — | Delete a book by id |
-
-### Search & Sort — `ApiFilterController` (`/api/Books`)
-
-| Method | Route | Description |
-|---|---|---|
-| GET | `/api/Books/search?author=&title=&category=` | Filter books by author/title/category (at least one required) |
-| GET | `/api/Books/sort?sortBy=date\|price&order=asc\|desc` | Sort the full book list |
-
-### Cart — `ApiCartController` (`/api/Cart`)
-
-| Method | Route | Auth | Description |
-|---|---|---|---|
-| POST | `/api/Cart/add` | Required | Add a book to the current user's cart (merges quantity if already present) |
-| GET | `/api/Cart/mycart` | Required | Get the current user's cart items + total price |
-| DELETE | `/api/Cart/delete/{bookId}` | Required | Remove a book from the cart |
-
----
-
-## ⚙️ Setup & Running Locally
-
-### Prerequisites
 - .NET 8 SDK
-- SQL Server (local or Express)
+- SQL Server or SQL Server Express
+- A database and a SQL Server login with permission to access it
+- Optional: SMTP credentials and a Cloudflare Turnstile secret for email recovery and registration verification
 
-### Steps
+## Getting started
 
-1. **Clone the repo**
-   ```bash
-   git clone https://github.com/joebest1/Book-Store.git
-   cd Book-Store
+1. Clone the repository and open the project directory.
+
+   ```powershell
+   git clone <repository-url>
+   cd Book-Store-main
    ```
 
-2. **Configure `appsettings.json`** (use `appsettings.Development.json` locally — do **not** commit real secrets):
-   - `ConnectionStrings:DefaultConnection` → your SQL Server connection string
-   - `EmailSettings` → your SMTP credentials (for password reset emails)
-   - `Captcha:SecretKey` → your Cloudflare Turnstile secret key
+2. Configure local secrets. From the project directory, initialize .NET user secrets and set the connection string for your SQL Server instance and database:
 
-3. **Apply EF Core migrations**
-   ```bash
+   ```powershell
+   dotnet user-secrets init
+   dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=localhost\SQLEXPRESS;Database=BookData;Trusted_Connection=True;TrustServerCertificate=True;"
+   ```
+
+   Replace the example server and database names with values from your machine. The Windows account running the app must have access to that database. Do not put real credentials or API secrets in a committed settings file.
+
+   For password reset email and Turnstile verification, configure these user-secret keys as needed:
+
+   ```powershell
+   dotnet user-secrets set "EmailSettings:SmtpServer" "<smtp-server>"
+   dotnet user-secrets set "EmailSettings:Port" "587"
+   dotnet user-secrets set "EmailSettings:SenderName" "<sender-name>"
+   dotnet user-secrets set "EmailSettings:SenderEmail" "<sender-email>"
+   dotnet user-secrets set "EmailSettings:Username" "<smtp-username>"
+   dotnet user-secrets set "EmailSettings:Password" "<smtp-password>"
+   dotnet user-secrets set "Captcha:SecretKey" "<turnstile-secret>"
+   ```
+
+3. Restore packages and apply the database migrations:
+
+   ```powershell
+   dotnet restore
    dotnet ef database update
    ```
 
-4. **Run the app**
-   ```bash
-   dotnet run
+   If `dotnet ef` is unavailable, install the EF Core CLI tool with `dotnet tool install --global dotnet-ef` and retry.
+
+4. Run the application:
+
+   ```powershell
+   dotnet run --launch-profile https
    ```
 
-5. **Browse**
-   - App: `https://localhost:7265/`
-   - Swagger: `https://localhost:7265/swagger`
+   The HTTPS launch profile uses `https://localhost:7265` and `http://localhost:5014`. Swagger is available at `https://localhost:7265/swagger`. You can also select the `http` or `https` profile in Visual Studio. When running without a launch profile or explicit URL, the app uses port `5015`.
 
-   On first run, the app auto-seeds two demo accounts:
-   - Admin: `admin@example.com` / `Admin@123`
-   - User: `user@example.com` / `User@123`
+## Demo accounts
 
----
+On startup, the application creates the `Admin` and `User` roles and seeds demo accounts when they do not already exist:
 
-## ⚠️ Security note
+- Admin: `admin@example.com` / `Admin@123`
+- User: `user@example.com` / `User@123`
 
-`appsettings.json` in this repo currently contains real-looking SMTP credentials and a Captcha secret key committed directly in source control. **These should be rotated immediately and moved out of source control** — e.g. into `appsettings.Development.json` (gitignored), environment variables, or a secrets manager (User Secrets / Azure Key Vault). Committing live credentials publicly is a serious security risk even for a learning project.
+These credentials are for local development only. Change or remove the demo seeding before deploying the application publicly.
 
----
+## API overview
 
-## 🗺️ Roadmap / Possible Improvements
+| Method | Route | Purpose |
+|---|---|---|
+| `GET` | `/ApiBook/Books` | List books |
+| `POST` | `/ApiBook/Books` | Add a book (admin role required; multipart form data) |
+| `DELETE` | `/ApiBook/Books/{id}` | Delete a book |
+| `GET` | `/api/Books/search?title=&author=&category=` | Search books |
+| `GET` | `/api/Books/sort?sortBy=price&order=asc` | Sort books by price or date |
+| `POST` | `/api/UserApi/register` | Register an account |
+| `POST` | `/api/UserApi/login` | Sign in |
+| `POST` | `/api/UserApi/logout` | Sign out |
+| `POST` | `/api/UserApi/forgot-password` | Request a password reset email |
+| `POST` | `/api/UserApi/reset-password` | Set a new password using a reset token |
+| `POST` | `/api/Cart/add` | Add a book to the signed-in user's cart |
+| `GET` | `/api/Cart/mycart` | Get the signed-in user's cart |
+| `DELETE` | `/api/Cart/delete/{bookId}` | Remove a book from the signed-in user's cart |
 
-- Move secrets to `dotnet user-secrets` or environment variables
-- Add server-side validation messages translated to Arabic for end users
-- Add unit/integration tests for `Services` and API controllers
-- Add a deployed demo link
-- Add order/checkout flow on top of the existing cart
-#   B o o k - S t o r e  
- 
+## Project layout
+
+```text
+Controllers/   MVC and API controllers
+Data/          EF Core context and database entities
+Migrations/    EF Core database migrations
+Models/        View models and application models
+Services/      Authentication, book, and cart services
+Views/         Razor pages
+wwwroot/       Static assets and uploaded book images
+Program.cs     Dependency injection and application startup
+```
+
+## Configuration and security
+
+The checked-in `appsettings.json` should contain only non-sensitive defaults. Keep database credentials, SMTP passwords, and Turnstile secrets in .NET User Secrets for development or in environment variables / a secrets manager for deployment. Rotate any credentials that have previously been committed to source control.
